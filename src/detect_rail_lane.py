@@ -107,11 +107,39 @@ def dense_flow(gray, gray_cur, image2):
         cv2.circle(mask, (xx, yy), 1, (255, 0, 0))
     return mask
 
-if __name__ == "__main__":
-    image = cv2.imread('./data/images/incheon-magnetic-right4f.png')
+def houghlines(canny):
+    lines = cv2.HoughLines(canny, 1, np.pi / 180, 40)
+    if lines is not None:
+        return [line[0] for line in lines
+            if np.pi / 3 >= line[0][1] or line[0][1] >= np.pi * 2 / 3]
+    return None
 
-    gray, blur, sobel_x, canny_x, canny = preprocess_image(image)
-    canny_x_ROI = make_roi(canny_x)
+if __name__ == "__main__":
+    image = cv2.imread('./data/images/incheon-magnetic-1080p-straight.png')
+
+    X_LEFT = 700
+    X_RIGHT = 1200
+
+    height, width = image.shape[:2]
+    patch = image[height-80:height,0:width]
+    gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
+
+    mask = np.copy(patch)
+    lines = houghlines(canny)
+    if lines is not None:
+        for index, line in enumerate(lines):
+            rho, theta = line
+
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            x1 = int(x0 + 1000 * (-b))
+            y1 = int(y0 + 1000 * (a))
+            x2 = int(x0 - 1000 * (-b))
+            y2 = int(y0 - 1000 * (a))
+
+            cv2.line(mask, (x1, y1), (x2, y2), (0, 255, 0), 1)
 
     cv2.imshow("Original", image)
     cv2.imshow("Gray", gray)
@@ -119,25 +147,6 @@ if __name__ == "__main__":
     cv2.imshow("Sobel X", sobel_x)
     cv2.imshow("Canny X", canny_x)
     cv2.imshow("Canny", canny)
-    cv2.imshow("Canny X ROI", canny_x_ROI)
-
-    cv2.waitKey(0); cv2.destroyAllWindows()
-
-    image2 = cv2.imread('./data/images/incheon-magnetic-right4l.png')
-    '''
-    wow = sift_move_line(image2, canny_x_ROI, gray)
-    cv2.imshow("Move", wow)
-    '''
-
-    '''
-    mask = track_optical_flow(gray, image2)
-    cv2.imshow("Optical Flow", mask)
-    '''
-
-    gray_cur = preprocess_image(image2)[0]
-
-    mask = dense_flow(gray, gray_cur, image2)
-
-    cv2.imshow("OpticalFlow", mask)
+    cv2.imshow("Lines", mask)
 
     cv2.waitKey(0); cv2.destroyAllWindows()
