@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 import math
 
+from detect_rail_lane import preprocess_image, dense_flow, make_roi
+
 def main():
     print('Hello, Wolrd!')
 
@@ -18,69 +20,57 @@ def main():
     height = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
     total_frame = capture.get(cv2.CAP_PROP_FRAME_COUNT)
 
-    # for _ in range(14744): # skip
-    for _ in range(2880): # skip
+    for _ in range(14744): # skip
+    # for _ in range(2880): # skip
     # for _ in range(321): # skip
         capture.read()
 
     print(total_frame)
+
+    ret, old_frame = capture.read()
+    old_gray = preprocess_image(old_frame)[0]
 
     while capture.get(cv2.CAP_PROP_POS_FRAMES) < capture.get(cv2.CAP_PROP_FRAME_COUNT):
         capture.read()
         capture.read()
         ret, frame = capture.read()
 
-        # set ROI
-        mask = np.zeros(frame.shape, np.uint8)
-        points = np.array([
-            [width // 2, height * 1 // 4],
-            [(width) * (0.5 + 0.3), height],
-            [(width) * (0.5 - 0.3), height],
-        ], np.int32)
-        points = points.reshape((-1, 1, 2))
-        mask_line = cv2.polylines(mask, [points], True, (255, 255, 255), 2)
-        mask = cv2.fillPoly(mask_line.copy(), [points], (255, 255, 255))
+        gray, _, _, canny_x, _ = preprocess_image(frame)
 
-        ROI = cv2.bitwise_and(mask, frame)
-
-        cv2.imshow("ROI", ROI)
-
-        # get gray color
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # get edges
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blurred, 50, 150, apertureSize=3)
-
-        mask_gray = cv2.cvtColor(mask, cv2.COLOR_RGB2GRAY)
-
-        RRR = cv2.bitwise_and(mask_gray, edges)
-
-        img2 = np.zeros(frame.shape)
+        mask = dense_flow(old_gray, gray, frame)
 
         # http://www.gisdeveloper.co.kr/?p=6714
-        lines = cv2.HoughLines(RRR, 1, np.pi / 180, 100)
-        for index, line in enumerate(lines):
-            rho, theta = line[0]
-            degree = theta / math.pi * 180
-            if degree > 30 and degree < 150:
-                continue
+        lines = cv2.HoughLines(make_roi(canny_x), 1, np.pi / 180, 100)
+        if lines is not None:
+            for index, line in enumerate(lines):
+                rho, theta = line[0]
+                degree = theta / math.pi * 180
+                if degree > 30 and degree < 150:
+                    continue
 
-            a = np.cos(theta)
-            b = np.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            x1 = int(x0 + 1000 * (-b))
-            y1 = int(y0 + 1000 * (a))
-            x2 = int(x0 - 1000 * (-b))
-            y2 = int(y0 - 1000 * (a))
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                x1 = int(x0 + 1000 * (-b))
+                y1 = int(y0 + 1000 * (a))
+                x2 = int(x0 - 1000 * (-b))
+                y2 = int(y0 - 1000 * (a))
 
-            if index < 5:
-                cv2.line(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
-            else:
-                cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 1)
-            # cv2.line(edges, (x1, y1), (x2, y2), (0, 0, 255), 1)
-            cv2.line(img2, (x1, y1), (x2, y2), (255, 255, 255), 1)
+                '''
+                if index < 5:
+                    # cv2.line(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
+                else:
+                    # cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 1)
+                # cv2.line(edges, (x1, y1), (x2, y2), (0, 0, 255), 1)
+                '''
+                cv2.line(mask, (x1, y1), (x2, y2), (0, 255, 0), 1)
+
+        cv2.imshow("Canny X", canny_x)
+        cv2.imshow("Flow", mask)
+
+        old_gray = gray
+        old_frame = frame
 
         '''
         minLineLength = 50
@@ -92,6 +82,7 @@ def main():
             cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
         '''
 
+        '''
         # get lines
 
         # get vanishing point
@@ -121,6 +112,7 @@ def main():
         cv2.imshow("Edges", RRR)
 
         # 전진
+        '''
 
         if cv2.waitKey(33) > 0: break
 
