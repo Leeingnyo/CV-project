@@ -114,19 +114,51 @@ def houghlines(canny):
             if np.pi / 3 >= line[0][1] or line[0][1] >= np.pi * 2 / 3]
     return None
 
-if __name__ == "__main__":
-    image = cv2.imread('./data/images/incheon-magnetic-1080p-straight.png')
+def nearest_lines(lines, expected_lower_x, expected_lower_y):
+    min_value = 1920
+    min_line = None
+    min_lower_x = None
+    min_upper_x = None
+    for line in lines:
+        rho, theta = line
+        # rho = x cos theta + y sin theta
+        lower_x = (rho - expected_lower_y * np.sin(theta)) / (np.cos(theta) + 1e-5)
+        upper_x = (rho) / (np.cos(theta) + 1e-5)
+        print(lower_x)
+        value = np.abs(lower_x - expected_lower_x)
+        if value < min_value:
+            min_line = line
+            min_value = value
+            min_lower_x = lower_x
+            min_upper_x = upper_x
+    return min_line, min_lower_x, min_upper_x
 
+if __name__ == "__main__":
+    image = cv2.imread('./data/images/incheon-magnetic-1080p-left.png')
+
+    # predefined
     X_LEFT = 700
     X_RIGHT = 1200
+    PATCH_H = 80
 
     height, width = image.shape[:2]
-    patch = image[height-80:height,0:width]
-    gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
 
-    mask = np.copy(patch)
-    lines = houghlines(canny)
-    if lines is not None:
+    left_lower_x_ll = []
+    left_upper_x_ll = []
+    right_lower_x_ll = []
+    right_upper_x_ll = []
+
+    lower_y_ll = []
+    upper_y_ll = []
+
+    loop = 0
+    mask = np.copy(image)
+    while loop < 27:
+        patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
+        gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
+
+        lines = houghlines(canny)
+        '''
         for index, line in enumerate(lines):
             rho, theta = line
 
@@ -140,13 +172,31 @@ if __name__ == "__main__":
             y2 = int(y0 - 1000 * (a))
 
             cv2.line(mask, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        '''
 
-    cv2.imshow("Original", image)
-    cv2.imshow("Gray", gray)
-    cv2.imshow("Blurred", blur)
-    cv2.imshow("Sobel X", sobel_x)
-    cv2.imshow("Canny X", canny_x)
-    cv2.imshow("Canny", canny)
+        if lines is None or len(lines) == 0:
+            break
+            print(loop)
+            loop += 1
+            continue
+
+        line_left, left_lower_x, left_upper_x = nearest_lines(lines, loop == 0 and X_LEFT or left_upper_x_ll[loop - 1], PATCH_H)
+        line_right, right_lower_x, right_upper_x = nearest_lines(lines, loop == 0 and X_RIGHT or right_upper_x_ll[loop - 1], PATCH_H)
+
+        left_lower_x_ll.append(left_lower_x)
+        left_upper_x_ll.append(left_upper_x)
+        right_lower_x_ll.append(right_lower_x)
+        right_upper_x_ll.append(right_upper_x)
+        lower_y_ll.append(height - PATCH_H * (loop))
+        upper_y_ll.append(height - PATCH_H * (loop + 1))
+
+        loop += 1
+
+    for llx, lux, rlx, rux, ly, uy in zip(left_lower_x_ll, left_upper_x_ll, right_lower_x_ll, right_upper_x_ll, lower_y_ll, upper_y_ll):
+        print(llx, lux, rlx, rux, ly, uy)
+        cv2.line(mask, (int(llx), int(ly)), (int(lux), int(uy)), (0, 0, 255), 2)
+        cv2.line(mask, (int(rlx), int(ly)), (int(rux), int(uy)), (0, 0, 255), 2)
+
     cv2.imshow("Lines", mask)
 
     cv2.waitKey(0); cv2.destroyAllWindows()
