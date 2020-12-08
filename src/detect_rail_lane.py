@@ -44,7 +44,26 @@ def make_roi_with(frame, points):
     return ROI
     
 def warp_bird_eye_view(img):
-    pass
+    src = np.float32([
+        (894, 597), (1010, 598),
+        (731, 989), (1197, 989),
+    ])
+    RATIO = 3
+    width = 1920
+    height = 1080 * 5
+    dst = np.float32([
+        (width / 2 - 30 * RATIO, height - 30 * 17 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 17 * RATIO),
+        (width / 2 - 30 * RATIO, height - 30 * 3 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 3 * RATIO),
+    ])
+
+    transformMatrix = cv2.getPerspectiveTransform(src, dst)
+
+    warped = np.zeros((height, width))
+    warped = cv2.warpPerspective(img, transformMatrix, (width, height))
+
+    warped_resize = cv2.resize(warped, dsize=(0, 0), fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
+
+    return warped_resize
 
 def detect_rail_lane(img, previmg=None):
     pass
@@ -166,12 +185,12 @@ if __name__ == "__main__":
 
     # print(fps, width, height, total_frame)
 
-    # for _ in range(14744): # skip
-    # for _ in range(2880): # skip
-    # for _ in range(321): # skip
-        # capture.read()
-
-    capture.set(cv2.CAP_PROP_POS_FRAMES, 4300)
+    # commented out
+    seek = 2880 # stop
+    seek = 4000 # straight
+    seek = 14744 # right
+    # seek = 28875 # left
+    capture.set(cv2.CAP_PROP_POS_FRAMES, seek)
 
     old_patch_roi = None
 
@@ -243,6 +262,9 @@ if __name__ == "__main__":
 
         cv2.imshow("Lines", mask)
         # cv2.imshow("Gray", canny)
+
+        s = warp_bird_eye_view(image)
+        cv2.imshow("warped", s)
 
         patch = image[height - PATCH_H * (2 + 1):height - PATCH_H * 0, 0:width]
         patch_roi = make_roi_with(preprocess_image(patch)[0], [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
