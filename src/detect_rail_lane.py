@@ -31,6 +31,17 @@ def make_roi(frame):
 
     ROI = cv2.bitwise_and(mask, frame)
     return ROI
+
+def make_roi_with(frame, points):
+    height, width = frame.shape[:2]
+    mask = np.zeros(frame.shape, np.uint8)
+    points = np.array(points, np.int32)
+    points = points.reshape((-1, 1, 2))
+    mask_line = cv2.polylines(mask, [points], True, (255, 255, 255), 2)
+    mask = cv2.fillPoly(mask_line.copy(), [points], (255, 255, 255))
+
+    ROI = cv2.bitwise_and(mask, frame)
+    return ROI
     
 def warp_bird_eye_view(img):
     pass
@@ -66,10 +77,16 @@ def sift_move_line(image2, canny_x_ROI, gray):
         qq = np.array(kp[t].pt).astype(np.int)
         color = (0, 0, 255)
         cv2.line(wow, tuple(pp), tuple(qq), color)
-        print(pp, qq)
+        # print(pp, qq)
     return wow
 
+feature_params = dict( maxCorners = 100,
+                       qualityLevel = 0.3,
+                       minDistance = 7,
+                       blockSize = 7)
+
 def track_optical_flow(gray, image2):
+    
     p0 = cv2.goodFeaturesToTrack(gray, mask = None, **feature_params)
 
     gray_cur, _, _, _, _ = preprocess_image(image2)
@@ -84,7 +101,7 @@ def track_optical_flow(gray, image2):
         a, b = new.ravel().astype(np.int)
         c, d = old.ravel().astype(np.int)
         mask = cv2.line(mask, (a,b), (c,d), (0, 0, 255))
-    return mask
+    return mask, good_new, good_old
 
 def dense_flow(gray, gray_cur, image2):
     flow = cv2.calcOpticalFlowFarneback(gray, gray_cur, None, 0.5, 4, 7, 4, 5, 1.1, 0)
@@ -95,7 +112,7 @@ def dense_flow(gray, gray_cur, image2):
     a[real_mask==0] = 2147483647
     s = a.argsort(axis=None)[:100]
 
-    mask = np.copy(make_roi(image2))
+    mask = np.copy(image2)
     height, width = gray.shape
     for y in range(2, height, 7):
         for x in range(2, width, 7):
@@ -105,7 +122,7 @@ def dense_flow(gray, gray_cur, image2):
     for ss in s:
         yy, xx = np.unravel_index(ss, a.shape)
         cv2.circle(mask, (xx, yy), 1, (255, 0, 0))
-    return mask
+    return mask, flow
 
 def houghlines(canny):
     lines = cv2.HoughLines(canny, 1, np.pi / 180, 40)
@@ -124,7 +141,7 @@ def nearest_lines(lines, expected_lower_x, expected_lower_y):
         # rho = x cos theta + y sin theta
         lower_x = (rho - expected_lower_y * np.sin(theta)) / (np.cos(theta) + 1e-5)
         upper_x = (rho) / (np.cos(theta) + 1e-5)
-        print(lower_x)
+        # print(lower_x)
         value = np.abs(lower_x - expected_lower_x)
         if value < min_value:
             min_line = line
@@ -136,67 +153,116 @@ def nearest_lines(lines, expected_lower_x, expected_lower_y):
 if __name__ == "__main__":
     image = cv2.imread('./data/images/incheon-magnetic-1080p-left.png')
 
-    # predefined
-    X_LEFT = 700
-    X_RIGHT = 1200
-    PATCH_H = 80
+    video_name = 'incheon-magnetic-1080p.mp4'
+    # video_name = 'RCT3-360p.mp4'
+    video_dir = 'data/'
+    video_path = video_dir + video_name
+    capture = cv2.VideoCapture(video_path) # start from 2880
 
-    height, width = image.shape[:2]
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    width = capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+    height = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    total_frame = capture.get(cv2.CAP_PROP_FRAME_COUNT)
 
-    left_lower_x_ll = []
-    left_upper_x_ll = []
-    right_lower_x_ll = []
-    right_upper_x_ll = []
+    # print(fps, width, height, total_frame)
 
-    lower_y_ll = []
-    upper_y_ll = []
+    # for _ in range(14744): # skip
+    # for _ in range(2880): # skip
+    # for _ in range(321): # skip
+        # capture.read()
 
-    loop = 0
-    mask = np.copy(image)
-    while loop < 27:
-        patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
-        gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
+    capture.set(cv2.CAP_PROP_POS_FRAMES, 4300)
 
-        lines = houghlines(canny)
-        '''
-        for index, line in enumerate(lines):
-            rho, theta = line
+    old_patch_roi = None
 
-            a = np.cos(theta)
-            b = np.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            x1 = int(x0 + 1000 * (-b))
-            y1 = int(y0 + 1000 * (a))
-            x2 = int(x0 - 1000 * (-b))
-            y2 = int(y0 - 1000 * (a))
+    while capture.get(cv2.CAP_PROP_POS_FRAMES) < capture.get(cv2.CAP_PROP_FRAME_COUNT):
+        ret, image = capture.read()
 
-            cv2.line(mask, (x1, y1), (x2, y2), (0, 255, 0), 1)
-        '''
+        # predefined
+        X_LEFT = 700
+        X_RIGHT = 1200
+        PATCH_H = 80
 
-        if lines is None or len(lines) == 0:
-            break
-            print(loop)
+        height, width = image.shape[:2]
+
+        left_lower_x_ll = []
+        left_upper_x_ll = []
+        right_lower_x_ll = []
+        right_upper_x_ll = []
+
+        lower_y_ll = []
+        upper_y_ll = []
+
+        loop = 0
+        mask = np.copy(image)
+        while loop < 8:
+            patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
+            gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
+
+            lines = houghlines(canny)
+            '''
+            for index, line in enumerate(lines):
+                rho, theta = line
+
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                x1 = int(x0 + 1000 * (-b))
+                y1 = int(y0 + 1000 * (a))
+                x2 = int(x0 - 1000 * (-b))
+                y2 = int(y0 - 1000 * (a))
+
+                cv2.line(mask, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            '''
+
+            if lines is None or len(lines) == 0:
+                break
+                # print(loop)
+                loop += 1
+                continue
+
+            line_left, left_lower_x, left_upper_x = nearest_lines(lines, loop == 0 and X_LEFT or left_upper_x_ll[loop - 1], PATCH_H)
+            line_right, right_lower_x, right_upper_x = nearest_lines(lines, loop == 0 and X_RIGHT or right_upper_x_ll[loop - 1], PATCH_H)
+
+            left_lower_x_ll.append(left_lower_x)
+            left_upper_x_ll.append(left_upper_x)
+            right_lower_x_ll.append(right_lower_x)
+            right_upper_x_ll.append(right_upper_x)
+            lower_y_ll.append(height - PATCH_H * (loop))
+            upper_y_ll.append(height - PATCH_H * (loop + 1))
+
             loop += 1
-            continue
 
-        line_left, left_lower_x, left_upper_x = nearest_lines(lines, loop == 0 and X_LEFT or left_upper_x_ll[loop - 1], PATCH_H)
-        line_right, right_lower_x, right_upper_x = nearest_lines(lines, loop == 0 and X_RIGHT or right_upper_x_ll[loop - 1], PATCH_H)
+        for llx, lux, rlx, rux, ly, uy in zip(left_lower_x_ll, left_upper_x_ll, right_lower_x_ll, right_upper_x_ll, lower_y_ll, upper_y_ll):
+            # print(llx, lux, rlx, rux, ly, uy)
+            cv2.line(mask, (int(llx), int(ly)), (int(lux), int(uy)), (0, 0, 255), 2)
+            cv2.line(mask, (int(rlx), int(ly)), (int(rux), int(uy)), (0, 0, 255), 2)
 
-        left_lower_x_ll.append(left_lower_x)
-        left_upper_x_ll.append(left_upper_x)
-        right_lower_x_ll.append(right_lower_x)
-        right_upper_x_ll.append(right_upper_x)
-        lower_y_ll.append(height - PATCH_H * (loop))
-        upper_y_ll.append(height - PATCH_H * (loop + 1))
+        gray, _, _, _, canny = preprocess_image(image)
 
-        loop += 1
+        cv2.imshow("Lines", mask)
+        # cv2.imshow("Gray", canny)
 
-    for llx, lux, rlx, rux, ly, uy in zip(left_lower_x_ll, left_upper_x_ll, right_lower_x_ll, right_upper_x_ll, lower_y_ll, upper_y_ll):
-        print(llx, lux, rlx, rux, ly, uy)
-        cv2.line(mask, (int(llx), int(ly)), (int(lux), int(uy)), (0, 0, 255), 2)
-        cv2.line(mask, (int(rlx), int(ly)), (int(rux), int(uy)), (0, 0, 255), 2)
+        patch = image[height - PATCH_H * (2 + 1):height - PATCH_H * 0, 0:width]
+        patch_roi = make_roi_with(preprocess_image(patch)[0], [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
+        ppppp = make_roi_with(patch, [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
+        if old_patch_roi is not None:
+            '''
+            image, flow = dense_flow(old_patch_roi, patch_roi, cv2.cvtColor(patch_roi, cv2.COLOR_GRAY2RGB))
+            '''
+            image, new, old = track_optical_flow(old_patch_roi, ppppp)
+            cv2.imshow("Optical Flow", image)
+            delta = (new - old)
+            print(delta.mean(axis=0))
+            '''
+            flow_y = flow[:,:,1]
+            flow_y[flow_y > 0] = 0
+            mean = np.mean(flow[:,:,1])
+            print(mean)
+            '''
 
-    cv2.imshow("Lines", mask)
+        old_patch_roi = patch_roi
 
-    cv2.waitKey(0); cv2.destroyAllWindows()
+        if cv2.waitKey(33) > 0: break
+    cv2.destroyAllWindows()
