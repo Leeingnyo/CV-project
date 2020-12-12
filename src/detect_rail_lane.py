@@ -48,12 +48,17 @@ def warp_bird_eye_view(img):
         (894, 597), (1010, 598),
         (731, 989), (1197, 989),
     ])
+    # below for RCT
+    '''
+        (890, 690), (1040, 690),
+        (730, 1020), (1200, 1020),
+    '''
     RATIO = 3
     width = 1920
-    height = 1080 * 5
+    height = 1080 * 2
     dst = np.float32([
-        (width / 2 - 30 * RATIO, height - 30 * 17 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 17 * RATIO),
-        (width / 2 - 30 * RATIO, height - 30 * 3 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 3 * RATIO),
+        (width / 2 - 30 * RATIO, height - 30 * 7 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 7 * RATIO),
+        (width / 2 - 30 * RATIO, height - 30 * 1 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 1 * RATIO),
     ])
 
     transformMatrix = cv2.getPerspectiveTransform(src, dst)
@@ -173,7 +178,7 @@ if __name__ == "__main__":
     image = cv2.imread('./data/images/incheon-magnetic-1080p-left.png')
 
     video_name = 'incheon-magnetic-1080p.mp4'
-    # video_name = 'RCT3-360p.mp4'
+    # video_name = 'RCT3.mp4'
     video_dir = 'data/'
     video_path = video_dir + video_name
     capture = cv2.VideoCapture(video_path) # start from 2880
@@ -186,10 +191,12 @@ if __name__ == "__main__":
     # print(fps, width, height, total_frame)
 
     # commented out
-    seek = 2880 # stop
-    seek = 4000 # straight
-    seek = 14744 # right
-    # seek = 28875 # left
+    # seek = 428 # stop
+    # seek = 2880 # stop
+    # seek = 4000 # straight
+    # seek = 14744 # right
+    # seek = 24775 # left
+    seek = 28875 # left
     capture.set(cv2.CAP_PROP_POS_FRAMES, seek)
 
     old_patch_roi = None
@@ -265,6 +272,9 @@ if __name__ == "__main__":
 
         s = warp_bird_eye_view(image)
         cv2.imshow("warped", s)
+
+        l = warp_bird_eye_view(mask)
+        cv2.imshow("warped with lines", l)
 
         patch = image[height - PATCH_H * (2 + 1):height - PATCH_H * 0, 0:width]
         patch_roi = make_roi_with(preprocess_image(patch)[0], [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
