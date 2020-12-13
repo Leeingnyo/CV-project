@@ -255,10 +255,45 @@ if __name__ == "__main__":
 
             loop += 1
 
+        angle = []
         for llx, lux, rlx, rux, ly, uy in zip(left_lower_x_ll, left_upper_x_ll, right_lower_x_ll, right_upper_x_ll, lower_y_ll, upper_y_ll):
             # print(llx, lux, rlx, rux, ly, uy)
             cv2.line(mask, (int(llx), int(ly)), (int(lux), int(uy)), (0, 0, 255), 2)
             cv2.line(mask, (int(rlx), int(ly)), (int(rux), int(uy)), (0, 0, 255), 2)
+
+            lt = np.array((lux, uy, 1))
+            rt = np.array((rux, uy, 1))
+            lb = np.array((llx, ly, 1))
+            rb = np.array((rlx, ly, 1))
+
+            wlt = np.matmul(wrap_transform_matrix, lt)
+            wrt = np.matmul(wrap_transform_matrix, rt)
+            wlb = np.matmul(wrap_transform_matrix, lb)
+            wrb = np.matmul(wrap_transform_matrix, rb)
+
+            wlt /= wlt[2]
+            wrt /= wrt[2]
+            wlb /= wlb[2]
+            wrb /= wrb[2]
+
+            pack = np.array((wlt, wrt, wlb, wrb), dtype=np.int)
+            left_angle = np.arctan2(pack[0,0] - pack[2,0], pack[2,1] - pack[0,1])
+            right_angle = np.arctan2(pack[1,0] - pack[3,0], pack[3,1] - pack[1,1])
+
+            angle.append((left_angle + right_angle) / 2)
+
+        interested_angle = angle[-4:]
+        mean_angle = sum(interested_angle) / len(interested_angle)
+        # print(mean_angle / np.pi * 180)
+        if len(direction) == 0:
+            direction.append(mean_angle)
+        else:
+            last_angle = direction[-1]
+            r = last_angle / mean_angle
+            if abs(r - 1) < 0.1:
+                direction.append(last_angle)
+            else:
+                direction.append(mean_angle)
 
         gray, _, _, _, canny = preprocess_image(image)
 
@@ -275,9 +310,6 @@ if __name__ == "__main__":
         patch_roi = make_roi_with(preprocess_image(patch)[0], [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
         ppppp = make_roi_with(patch, [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
         if old_patch_roi is not None:
-            '''
-            image, flow = dense_flow(old_patch_roi, patch_roi, cv2.cvtColor(patch_roi, cv2.COLOR_GRAY2RGB))
-            '''
             image, new, old = track_optical_flow(old_patch_roi, ppppp)
             cv2.imshow("Optical Flow", image)
             delta = (new - old)
