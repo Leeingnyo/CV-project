@@ -289,15 +289,16 @@ if __name__ == "__main__":
             except ZeroDivisionError:
                 mean_angle = 153123513
             # print(mean_angle / np.pi * 180)
-            if len(direction) == 0:
-                direction.append(mean_angle)
-            else:
-                last_angle = direction[-1]
-                r = last_angle / mean_angle
-                if abs(r - 1) < 0.1:
-                    direction.append(last_angle)
-                else:
+            if old_patch_roi is not None:
+                if len(direction) == 0:
                     direction.append(mean_angle)
+                else:
+                    last_angle = direction[-1]
+                    r = last_angle / mean_angle
+                    if abs(r - 1) < 0.1:
+                        direction.append(last_angle)
+                    else:
+                        direction.append(mean_angle)
 
             gray, _, _, _, canny = preprocess_image(image)
 
@@ -334,11 +335,14 @@ if __name__ == "__main__":
             if cv2.waitKey(33) > 0: break
         except Exception as e:
             pass
+        finally:
+            if len(direction) != len(speed):
+                direction = direction[:-1]
 
     cv2.destroyAllWindows()
 
     print(len(speed))
-    print(len(direction[1:]))
+    print(len(direction))
 
     global_direction = 0.0
     D_R = 0.1
