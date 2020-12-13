@@ -212,122 +212,128 @@ if __name__ == "__main__":
     old_patch_roi = None
 
     while capture.get(cv2.CAP_PROP_POS_FRAMES) < capture.get(cv2.CAP_PROP_FRAME_COUNT):
-        ret, image = capture.read()
+        try:
+            ret, image = capture.read()
 
-        # predefined
-        X_LEFT = 700
-        X_RIGHT = 1200
-        PATCH_H = 80
+            # predefined
+            X_LEFT = 700
+            X_RIGHT = 1200
+            PATCH_H = 80
 
-        height, width = image.shape[:2]
+            height, width = image.shape[:2]
 
-        left_lower_x_ll = []
-        left_upper_x_ll = []
-        right_lower_x_ll = []
-        right_upper_x_ll = []
+            left_lower_x_ll = []
+            left_upper_x_ll = []
+            right_lower_x_ll = []
+            right_upper_x_ll = []
 
-        lower_y_ll = []
-        upper_y_ll = []
+            lower_y_ll = []
+            upper_y_ll = []
 
-        loop = 0
-        mask = np.copy(image)
-        while loop < 7:
-            patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
-            gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
+            loop = 0
+            mask = np.copy(image)
+            while loop < 7:
+                patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
+                gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
 
-            lines = houghlines(canny)
+                lines = houghlines(canny)
 
-            if lines is None or len(lines) == 0:
-                break
-                # print(loop)
+                if lines is None or len(lines) == 0:
+                    break
+                    # print(loop)
+                    loop += 1
+                    continue
+
+                line_left, left_lower_x, left_upper_x = nearest_lines(lines, loop == 0 and X_LEFT or left_upper_x_ll[loop - 1], PATCH_H)
+                line_right, right_lower_x, right_upper_x = nearest_lines(lines, loop == 0 and X_RIGHT or right_upper_x_ll[loop - 1], PATCH_H)
+
+                left_lower_x_ll.append(left_lower_x)
+                left_upper_x_ll.append(left_upper_x)
+                right_lower_x_ll.append(right_lower_x)
+                right_upper_x_ll.append(right_upper_x)
+                lower_y_ll.append(height - PATCH_H * (loop))
+                upper_y_ll.append(height - PATCH_H * (loop + 1))
+
                 loop += 1
-                continue
 
-            line_left, left_lower_x, left_upper_x = nearest_lines(lines, loop == 0 and X_LEFT or left_upper_x_ll[loop - 1], PATCH_H)
-            line_right, right_lower_x, right_upper_x = nearest_lines(lines, loop == 0 and X_RIGHT or right_upper_x_ll[loop - 1], PATCH_H)
+            angle = []
+            for llx, lux, rlx, rux, ly, uy in zip(left_lower_x_ll, left_upper_x_ll, right_lower_x_ll, right_upper_x_ll, lower_y_ll, upper_y_ll):
+                # print(llx, lux, rlx, rux, ly, uy)
+                cv2.line(mask, (int(llx), int(ly)), (int(lux), int(uy)), (0, 0, 255), 2)
+                cv2.line(mask, (int(rlx), int(ly)), (int(rux), int(uy)), (0, 0, 255), 2)
 
-            left_lower_x_ll.append(left_lower_x)
-            left_upper_x_ll.append(left_upper_x)
-            right_lower_x_ll.append(right_lower_x)
-            right_upper_x_ll.append(right_upper_x)
-            lower_y_ll.append(height - PATCH_H * (loop))
-            upper_y_ll.append(height - PATCH_H * (loop + 1))
+                lt = np.array((lux, uy, 1))
+                rt = np.array((rux, uy, 1))
+                lb = np.array((llx, ly, 1))
+                rb = np.array((rlx, ly, 1))
 
-            loop += 1
+                wlt = np.matmul(wrap_transform_matrix, lt)
+                wrt = np.matmul(wrap_transform_matrix, rt)
+                wlb = np.matmul(wrap_transform_matrix, lb)
+                wrb = np.matmul(wrap_transform_matrix, rb)
 
-        angle = []
-        for llx, lux, rlx, rux, ly, uy in zip(left_lower_x_ll, left_upper_x_ll, right_lower_x_ll, right_upper_x_ll, lower_y_ll, upper_y_ll):
-            # print(llx, lux, rlx, rux, ly, uy)
-            cv2.line(mask, (int(llx), int(ly)), (int(lux), int(uy)), (0, 0, 255), 2)
-            cv2.line(mask, (int(rlx), int(ly)), (int(rux), int(uy)), (0, 0, 255), 2)
+                wlt /= wlt[2]
+                wrt /= wrt[2]
+                wlb /= wlb[2]
+                wrb /= wrb[2]
 
-            lt = np.array((lux, uy, 1))
-            rt = np.array((rux, uy, 1))
-            lb = np.array((llx, ly, 1))
-            rb = np.array((rlx, ly, 1))
+                pack = np.array((wlt, wrt, wlb, wrb), dtype=np.int)
+                left_angle = np.arctan2(pack[0,0] - pack[2,0], pack[2,1] - pack[0,1])
+                right_angle = np.arctan2(pack[1,0] - pack[3,0], pack[3,1] - pack[1,1])
 
-            wlt = np.matmul(wrap_transform_matrix, lt)
-            wrt = np.matmul(wrap_transform_matrix, rt)
-            wlb = np.matmul(wrap_transform_matrix, lb)
-            wrb = np.matmul(wrap_transform_matrix, rb)
+                angle.append((left_angle + right_angle) / 2)
 
-            wlt /= wlt[2]
-            wrt /= wrt[2]
-            wlb /= wlb[2]
-            wrb /= wrb[2]
-
-            pack = np.array((wlt, wrt, wlb, wrb), dtype=np.int)
-            left_angle = np.arctan2(pack[0,0] - pack[2,0], pack[2,1] - pack[0,1])
-            right_angle = np.arctan2(pack[1,0] - pack[3,0], pack[3,1] - pack[1,1])
-
-            angle.append((left_angle + right_angle) / 2)
-
-        interested_angle = angle[-4:]
-        mean_angle = sum(interested_angle) / len(interested_angle)
-        # print(mean_angle / np.pi * 180)
-        if len(direction) == 0:
-            direction.append(mean_angle)
-        else:
-            last_angle = direction[-1]
-            r = last_angle / mean_angle
-            if abs(r - 1) < 0.1:
-                direction.append(last_angle)
-            else:
+            interested_angle = angle[-4:]
+            try:
+                mean_angle = sum(interested_angle) / len(interested_angle)
+            except ZeroDivisionError:
+                mean_angle = 153123513
+            # print(mean_angle / np.pi * 180)
+            if len(direction) == 0:
                 direction.append(mean_angle)
-
-        gray, _, _, _, canny = preprocess_image(image)
-
-        cv2.imshow("Lines", mask)
-        # cv2.imshow("Gray", canny)
-
-        s = warp_bird_eye_view(image)
-        cv2.imshow("warped", s)
-
-        l = warp_bird_eye_view(mask)
-        cv2.imshow("warped with lines", l)
-
-        patch = image[height - PATCH_H * (2 + 1):height - PATCH_H * 0, 0:width]
-        patch_roi = make_roi_with(preprocess_image(patch)[0], [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
-        ppppp = make_roi_with(patch, [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
-        if old_patch_roi is not None:
-            image, new, old = track_optical_flow(old_patch_roi, ppppp)
-            cv2.imshow("Optical Flow", image)
-            delta = (new - old)
-            calculated_speed = np.linalg.norm(delta.mean(axis=0))
-            latest_speed = speed[-5:]
-            if len(latest_speed) == 0:
-                speed.append(calculated_speed)
             else:
-                mean_speed = sum(latest_speed) / len(latest_speed)
-                r = calculated_speed / mean_speed
+                last_angle = direction[-1]
+                r = last_angle / mean_angle
                 if abs(r - 1) < 0.1:
+                    direction.append(last_angle)
+                else:
+                    direction.append(mean_angle)
+
+            gray, _, _, _, canny = preprocess_image(image)
+
+            cv2.imshow("Lines", mask)
+            # cv2.imshow("Gray", canny)
+
+            s = warp_bird_eye_view(image)
+            cv2.imshow("warped", s)
+
+            l = warp_bird_eye_view(mask)
+            cv2.imshow("warped with lines", l)
+
+            patch = image[height - PATCH_H * (2 + 1):height - PATCH_H * 0, 0:width]
+            patch_roi = make_roi_with(preprocess_image(patch)[0], [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
+            ppppp = make_roi_with(patch, [(left_upper_x_ll[2], 0), (left_lower_x_ll[0], PATCH_H * 3), (right_lower_x_ll[0], PATCH_H * 3), (right_upper_x_ll[2], 0)])
+            if old_patch_roi is not None:
+                image, new, old = track_optical_flow(old_patch_roi, ppppp)
+                cv2.imshow("Optical Flow", image)
+                delta = (new - old)
+                calculated_speed = np.linalg.norm(delta.mean(axis=0))
+                latest_speed = speed[-5:]
+                if len(latest_speed) == 0:
                     speed.append(calculated_speed)
                 else:
-                    speed.append(mean_speed)
+                    mean_speed = sum(latest_speed) / len(latest_speed)
+                    r = calculated_speed / mean_speed
+                    if abs(r - 1) < 0.1:
+                        speed.append(calculated_speed)
+                    else:
+                        speed.append(mean_speed)
 
-        old_patch_roi = patch_roi
+            old_patch_roi = patch_roi
 
-        if cv2.waitKey(33) > 0: break
+            if cv2.waitKey(33) > 0: break
+        except Exception as e:
+            pass
 
     cv2.destroyAllWindows()
 
@@ -362,14 +368,17 @@ if __name__ == "__main__":
     prev_position = None
     MAP_SCALE = 500 / max(max_x - min_x, max_y - min_y)
     for current_position in nd_positions:
-        if prev_position is not None:
-            px = int((prev_position[0]) * MAP_SCALE)
-            py = int((prev_position[1]) * MAP_SCALE)
-            cx = int((current_position[0]) * MAP_SCALE)
-            cy = int((current_position[1]) * MAP_SCALE)
-            cv2.line(Map, (px, py), (cx, cy), (255, 255, 255), 1)
+        try:
+            if prev_position is not None:
+                px = int((prev_position[0]) * MAP_SCALE)
+                py = int((prev_position[1]) * MAP_SCALE)
+                cx = int((current_position[0]) * MAP_SCALE)
+                cy = int((current_position[1]) * MAP_SCALE)
+                cv2.line(Map, (px, py), (cx, cy), (255, 255, 255), 1)
 
-        prev_position = current_position
+            prev_position = current_position
+        except Exception as e:
+            pass
 
     Map = np.pad(Map, ((MAP_PAD, MAP_PAD), (MAP_PAD, MAP_PAD), (0, 0)), constant_values=0)
 
