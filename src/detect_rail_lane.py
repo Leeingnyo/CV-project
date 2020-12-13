@@ -42,8 +42,8 @@ def make_roi_with(frame, points):
 
     ROI = cv2.bitwise_and(mask, frame)
     return ROI
-    
-def warp_bird_eye_view(img):
+
+def get_bird_eye_view_transmatrix():
     src = np.float32([
         (894, 597), (1010, 598),
         (731, 989), (1197, 989),
@@ -61,7 +61,13 @@ def warp_bird_eye_view(img):
         (width / 2 - 30 * RATIO, height - 30 * 1 * RATIO), (width / 2 + 30 * RATIO, height - 30 * 1 * RATIO),
     ])
 
-    transformMatrix = cv2.getPerspectiveTransform(src, dst)
+    return cv2.getPerspectiveTransform(src, dst)
+
+def warp_bird_eye_view(img):
+    width = 1920
+    height = 1080 * 2
+
+    transformMatrix = get_bird_eye_view_transmatrix()
 
     warped = np.zeros((height, width))
     warped = cv2.warpPerspective(img, transformMatrix, (width, height))
@@ -189,14 +195,18 @@ if __name__ == "__main__":
     total_frame = capture.get(cv2.CAP_PROP_FRAME_COUNT)
 
     # print(fps, width, height, total_frame)
+    wrap_transform_matrix = get_bird_eye_view_transmatrix()
+
+    speed = []
+    direction = []
 
     # commented out
     # seek = 428 # stop
     # seek = 2880 # stop
-    # seek = 4000 # straight
+    seek = 4000 # straight
     # seek = 14744 # right
     # seek = 24775 # left
-    seek = 28875 # left
+    # seek = 28875 # left
     capture.set(cv2.CAP_PROP_POS_FRAMES, seek)
 
     old_patch_roi = None
@@ -221,26 +231,11 @@ if __name__ == "__main__":
 
         loop = 0
         mask = np.copy(image)
-        while loop < 8:
+        while loop < 7:
             patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
             gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
 
             lines = houghlines(canny)
-            '''
-            for index, line in enumerate(lines):
-                rho, theta = line
-
-                a = np.cos(theta)
-                b = np.sin(theta)
-                x0 = a * rho
-                y0 = b * rho
-                x1 = int(x0 + 1000 * (-b))
-                y1 = int(y0 + 1000 * (a))
-                x2 = int(x0 - 1000 * (-b))
-                y2 = int(y0 - 1000 * (a))
-
-                cv2.line(mask, (x1, y1), (x2, y2), (0, 255, 0), 1)
-            '''
 
             if lines is None or len(lines) == 0:
                 break
@@ -286,7 +281,17 @@ if __name__ == "__main__":
             image, new, old = track_optical_flow(old_patch_roi, ppppp)
             cv2.imshow("Optical Flow", image)
             delta = (new - old)
-            print(delta.mean(axis=0))
+            calculated_speed = np.linalg.norm(delta.mean(axis=0))
+            latest_speed = speed[-5:]
+            if len(latest_speed) == 0:
+                speed.append(calculated_speed)
+            else:
+                mean_speed = sum(latest_speed) / len(latest_speed)
+                r = calculated_speed / mean_speed
+                if abs(r - 1) < 0.1:
+                    speed.append(calculated_speed)
+                else:
+                    speed.append(mean_speed)
             '''
             flow_y = flow[:,:,1]
             flow_y[flow_y > 0] = 0
