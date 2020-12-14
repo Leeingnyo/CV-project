@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import pickle
 
 def preprocess_image(img):
     '''
@@ -45,13 +46,13 @@ def make_roi_with(frame, points):
 
 def get_bird_eye_view_transmatrix():
     src = np.float32([
-        (894, 597), (1010, 598),
-        (731, 989), (1197, 989),
+        (890, 690), (1040, 690),
+        (730, 1020), (1200, 1020),
     ])
     # below for RCT
     '''
-        (890, 690), (1040, 690),
-        (730, 1020), (1200, 1020),
+        (894, 597), (1010, 598),
+        (731, 989), (1197, 989),
     '''
     RATIO = 3
     width = 1920
@@ -181,10 +182,13 @@ def nearest_lines(lines, expected_lower_x, expected_lower_y):
     return min_line, min_lower_x, min_upper_x
 
 if __name__ == "__main__":
+    from datetime import datetime
+    s = datetime.now()
+    print(s)
     image = cv2.imread('./data/images/incheon-magnetic-1080p-left.png')
 
-    video_name = 'incheon-magnetic-1080p.mp4'
-    # video_name = 'RCT3.mp4'
+    # video_name = 'incheon-magnetic-1080p.mp4'
+    video_name = 'RCT3.mp4'
     video_dir = 'data/'
     video_path = video_dir + video_name
     capture = cv2.VideoCapture(video_path) # start from 2880
@@ -201,17 +205,35 @@ if __name__ == "__main__":
     direction = []
 
     # commented out
-    # seek = 428 # stop
-    # seek = 2880 # stop
-    seek = 4000 # straight
-    # seek = 14744 # right
+    seek = 328 # stop
+    # seek = 3880 # stop
+    # seek = 4000 # straight
+    # seek = 13944 # right
     # seek = 24775 # left
     # seek = 28875 # left
     capture.set(cv2.CAP_PROP_POS_FRAMES, seek)
 
     old_patch_roi = None
 
+    # enable when magnetic video
+    '''
+    sections = [
+        (3890, 5483),
+        (8952, 11207),
+        (14720, 16908),
+        (20486, 31468),
+        (35254, 41477)
+    ]
+    current_section_index = 0
+    '''
+
+    SAVE_INTERVAL = 0
     while capture.get(cv2.CAP_PROP_POS_FRAMES) < capture.get(cv2.CAP_PROP_FRAME_COUNT):
+        '''
+        if capture.get(cv2.CAP_PROP_POS_FRAMES) > sections[current_section_index][1]:
+            current_section_index += 1
+            capture.set(cv2.CAP_PROP_POS_FRAMES, sections[current_section_index][0])
+        '''
         try:
             ret, image = capture.read()
 
@@ -232,7 +254,7 @@ if __name__ == "__main__":
 
             loop = 0
             mask = np.copy(image)
-            while loop < 7:
+            while loop < 6:
                 patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
                 gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
 
@@ -338,19 +360,33 @@ if __name__ == "__main__":
         finally:
             if len(direction) != len(speed):
                 direction = direction[:-1]
+            SAVE_INTERVAL += 1
+
+        if SAVE_INTERVAL > 100:
+            with open('speed-' + video_name + '.dat', 'wb') as f:
+                pickle.dump(speed, f)
+            with open('direction-' + video_name + '.dat', 'wb') as f:
+                pickle.dump(direction, f)
+            SAVE_INTERVAL = 0
 
     cv2.destroyAllWindows()
 
     print(len(speed))
     print(len(direction))
 
+    with open('speed-' + video_name + '.dat', 'wb') as f:
+        pickle.dump(speed, f)
+    with open('direction-' + video_name + '.dat', 'wb') as f:
+        pickle.dump(direction, f)
+
     global_direction = 0.0
-    D_R = 0.1
+    D_R = 0.017
     S_R = 0.1
     current_x = 0
     current_y = 0
     positions = [(0, 0)]
     for (s, d) in zip(speed, direction):
+        # print(global_direction, d, d * D_R)
         global_direction += d * D_R
         delta_x = np.cos(global_direction) * s * S_R
         delta_y = np.sin(global_direction) * s * S_R
@@ -379,12 +415,16 @@ if __name__ == "__main__":
                 cx = int((current_position[0]) * MAP_SCALE)
                 cy = int((current_position[1]) * MAP_SCALE)
                 cv2.line(Map, (px, py), (cx, cy), (255, 255, 255), 1)
+                cv2.line(Map, (px, py), (cx, cy), (255, 255, 255), 1)
+                # cv2.circle(Map, (cx, cy), 1, (0, 0, 255), 2)
 
             prev_position = current_position
         except Exception as e:
             pass
 
     Map = np.pad(Map, ((MAP_PAD, MAP_PAD), (MAP_PAD, MAP_PAD), (0, 0)), constant_values=0)
+
+    print(datetime.now())
 
     cv2.imshow("Map", Map)
     cv2.waitKey()
