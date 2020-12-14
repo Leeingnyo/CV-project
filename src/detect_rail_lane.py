@@ -46,13 +46,13 @@ def make_roi_with(frame, points):
 
 def get_bird_eye_view_transmatrix():
     src = np.float32([
-        (890, 690), (1040, 690),
-        (730, 1020), (1200, 1020),
+        (894, 597), (1010, 598),
+        (731, 989), (1197, 989),
     ])
     # below for RCT
     '''
-        (894, 597), (1010, 598),
-        (731, 989), (1197, 989),
+        (890, 690), (1040, 690),
+        (730, 1020), (1200, 1020),
     '''
     RATIO = 3
     width = 1920
@@ -187,8 +187,8 @@ if __name__ == "__main__":
     print(s)
     image = cv2.imread('./data/images/incheon-magnetic-1080p-left.png')
 
-    # video_name = 'incheon-magnetic-1080p.mp4'
-    video_name = 'RCT3.mp4'
+    video_name = 'incheon-magnetic-1080p.mp4'
+    # video_name = 'RCT3.mp4'
     video_dir = 'data/'
     video_path = video_dir + video_name
     capture = cv2.VideoCapture(video_path) # start from 2880
@@ -205,18 +205,17 @@ if __name__ == "__main__":
     direction = []
 
     # commented out
-    seek = 328 # stop
-    # seek = 3880 # stop
+    # seek = 328 # stop
+    # seek = 3890 # stop
     # seek = 4000 # straight
     # seek = 13944 # right
-    # seek = 24775 # left
+    seek = 20775 # left
     # seek = 28875 # left
     capture.set(cv2.CAP_PROP_POS_FRAMES, seek)
 
     old_patch_roi = None
 
     # enable when magnetic video
-    '''
     sections = [
         (3890, 5483),
         (8952, 11207),
@@ -224,15 +223,16 @@ if __name__ == "__main__":
         (20486, 31468),
         (35254, 41477)
     ]
-    current_section_index = 0
+    current_section_index = 3
+    '''
     '''
 
     SAVE_INTERVAL = 0
     while capture.get(cv2.CAP_PROP_POS_FRAMES) < capture.get(cv2.CAP_PROP_FRAME_COUNT):
-        '''
         if capture.get(cv2.CAP_PROP_POS_FRAMES) > sections[current_section_index][1]:
             current_section_index += 1
             capture.set(cv2.CAP_PROP_POS_FRAMES, sections[current_section_index][0])
+        '''
         '''
         try:
             ret, image = capture.read()
@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
             loop = 0
             mask = np.copy(image)
-            while loop < 6:
+            while loop < 7:
                 patch = image[height - PATCH_H * (loop + 1):height - PATCH_H * loop, 0:width]
                 gray, blur, sobel_x, canny_x, canny = preprocess_image(patch)
 

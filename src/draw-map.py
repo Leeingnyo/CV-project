@@ -3,8 +3,8 @@ import cv2
 import pickle
 
 if __name__ == "__main__":
-    # video_name = 'incheon-magnetic-1080p.mp4'
-    video_name = 'RCT3.mp4'
+    video_name = 'incheon-magnetic-1080p.mp4'
+    # video_name = 'RCT3.mp4'
 
     with open('speed-' + video_name + '.dat', 'rb') as f:
         speed = pickle.load(f)
@@ -12,7 +12,7 @@ if __name__ == "__main__":
         direction = pickle.load(f)
 
     global_direction = 0.0
-    D_R = 0.017
+    D_R = 0.003
     S_R = 0.1
     current_x = 0
     current_y = 0
