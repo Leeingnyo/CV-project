@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     prev_position = None
     MAP_SCALE = 500 / max(max_x - min_x, max_y - min_y)
-    for current_position in nd_positions:
+    for index, current_position in enumerate(nd_positions):
         try:
             if prev_position is not None:
                 px = int((prev_position[0]) * MAP_SCALE)
@@ -48,7 +48,8 @@ if __name__ == "__main__":
                 cy = int((current_position[1]) * MAP_SCALE)
                 cv2.line(Map, (px, py), (cx, cy), (255, 255, 255), 1)
                 cv2.line(Map, (px, py), (cx, cy), (255, 255, 255), 1)
-                # cv2.circle(Map, (cx, cy), 1, (0, 0, 255), 2)
+                if index % 1000 == 0:
+                    cv2.circle(Map, (cx, cy), 1, (0, 0, 255), 2)
 
             prev_position = current_position
         except Exception as e:
